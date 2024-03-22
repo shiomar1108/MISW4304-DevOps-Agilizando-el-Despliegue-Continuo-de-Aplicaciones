@@ -1,0 +1,50 @@
+version: 0.2
+
+phases:
+  install:
+    on-failure: ABORT
+    commands:
+      - echo Update libreries started on `date`
+      - sudo apt update -y
+      - echo Install Python started on `date`
+      - sudo apt install python3-pip -y
+      - sudo pip install -r requirements.txt
+  pre_build:
+    on-failure: ABORT
+    commands:
+      - echo Init Postgresql started on `date`
+      - docker run --name pgblacklistdb -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=PgBlackList202314 -e POSTGRES_DB=pgblacklistdb -d public.ecr.aws/docker/library/postgres:12.16-bullseye
+      - docker container ls -a
+  build:
+    on-failure: ABORT
+    commands:
+      - echo Run tests started on `date`
+      - pytest --cov-fail-under=70 --cov=src
+  post_build:
+    on-failure: ABORT
+    commands:
+      - echo Logging in to Amazon ECR started on `date`
+      - aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 312883711942.dkr.ecr.us-east-2.amazonaws.com
+      - echo Building the Docker image started on `date`          
+      - docker build -t container_app:latest .
+      - docker tag container_app:latest 312883711942.dkr.ecr.us-east-2.amazonaws.com/container_app:latest
+      - echo Build completed on `date`
+      - echo Pushing the Docker image started on `date`
+      - docker push 312883711942.dkr.ecr.us-east-2.amazonaws.com/container_app:latest
+      - echo Writing Image Definitions file...
+      - printf '[{"name":"container-blacklist-app","imageUri":"312883711942.dkr.ecr.us-east-2.amazonaws.com/container_app:latest"}]' > imagedefinitions.json
+      - printf '{"ImageURI":"312883711942.dkr.ecr.us-east-2.amazonaws.com/container_app:latest"}' > imageDetail.json
+      - cat imagedefinitions.json 
+artifacts:
+  files:
+    - '**/*'
+    - imagedefinitions.json
+    - imageDetail.json
+  secondary-artifacts:
+    DefinitionArtifact:
+      files:
+        - appspec.json
+        - taskdef.json
+    ImageArtifact:
+      files:
+        - imageDetail.json
